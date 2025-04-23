@@ -1,3 +1,5 @@
 data/
 .venv/
 .env
+logs/
+best_model.h5

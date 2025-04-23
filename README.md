@@ -62,6 +62,26 @@ To run the baseline model:
 python sota_baseline.py
 ```
 
+## Monitoring Training with TensorBoard
+
+The baseline model includes TensorBoard integration for real-time training monitoring. TensorBoard provides interactive visualizations of:
+- Training and validation accuracy/loss over time
+- Model architecture
+- Weight histograms
+- Training metrics
+
+To view the TensorBoard dashboard:
+```bash
+tensorboard --logdir logs/fit
+```
+
+Then open your web browser and navigate to:
+```
+http://localhost:6006
+```
+
+The logs are automatically saved in the `logs/fit` directory with timestamps for each training run.
+
 ## Results and Outputs
 All training outputs, logs, and results should be saved in the `outputs/` directory. This includes:
 - Model checkpoints

@@ -19,18 +19,19 @@ import tensorflow as tf
 from tensorflow.keras import layers, models
 from sklearn.model_selection import train_test_split
 import matplotlib.pyplot as plt
+from datetime import datetime
 
 def load_data():
     """Load and preprocess the DCASE2022 dataset from numpy mel files."""
     print("🔍 Loading data...")
-    BASE_PATH = 'DCASE2022_numpy_mel_train_test_data'
+    BASE_PATH = 'data'
     
     # Load training features and labels
-    x_train = np.load(os.path.join(BASE_PATH, 'DCASE 2022 Train Data.npy'))
+    x_train = np.load(os.path.join(BASE_PATH, 'data_train.npy'))
     y_train = np.load(os.path.join(BASE_PATH, 'label_train.npy'))
     
     # Load test features and labels
-    x_test = np.load(os.path.join(BASE_PATH, 'DCASE 2022 Test Data.npy'))
+    x_test = np.load(os.path.join(BASE_PATH, 'data_test.npy'))
     y_test = np.load(os.path.join(BASE_PATH, 'label_test.npy'))
     
     print(f"📊 Train features shape: {x_train.shape}")
@@ -139,6 +140,10 @@ def main():
     np.random.seed(42)
     tf.random.set_seed(42)
     
+    # Create timestamped log directory for TensorBoard
+    log_dir = os.path.join("logs", "fit", datetime.now().strftime("%Y%m%d-%H%M%S"))
+    os.makedirs(log_dir, exist_ok=True)
+    
     # Load data
     x_train, x_val, x_test, y_train, y_val, y_test = load_data()
     
@@ -169,6 +174,13 @@ def main():
     
     # Define callbacks
     callbacks = [
+        tf.keras.callbacks.TensorBoard(
+            log_dir=log_dir,
+            histogram_freq=1,  # Log histograms every epoch
+            write_graph=True,  # Log the model graph
+            write_images=True,  # Log model weights as images
+            update_freq='epoch'  # Log metrics at the end of each epoch
+        ),
         tf.keras.callbacks.EarlyStopping(
             monitor='val_loss',
             patience=10,  # Stop if validation loss doesn't improve for 10 epochs
@@ -177,12 +189,12 @@ def main():
         ),
         tf.keras.callbacks.EarlyStopping(
             monitor='val_accuracy',
-            patience=10,  # Stop if validation accuracy doesn't improve for 10 epochs
+            patience=5,  # Stop if validation accuracy doesn't improve for 5 epochs
             restore_best_weights=True,
             verbose=1
         ),
         tf.keras.callbacks.ModelCheckpoint(
-            'best_model.h5',
+            'best_model.keras',
             monitor='val_accuracy',
             save_best_only=True,
             verbose=1
@@ -191,6 +203,8 @@ def main():
     
     # Train the model
     print("\n🚀 Starting training...")
+    print(f"📊 TensorBoard logs will be saved to: {log_dir}")
+    print("📊 To view TensorBoard, run: tensorboard --logdir logs/fit")
     history = model.fit(
         train_dataset,
         validation_data=val_dataset,
@@ -215,6 +229,7 @@ def main():
     print("\n📊 Plotting training history...")
     plot_training_history(history)
     print("\n🎉 Training completed! Results saved in 'training_history.png'")
+    print(f"🎉 TensorBoard logs saved to: {log_dir}")
 
 if __name__ == '__main__':
-    main() 
+    main()
