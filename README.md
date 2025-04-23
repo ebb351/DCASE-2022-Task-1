@@ -21,7 +21,7 @@ This project implements a baseline model for DCASE 2022 Task 1: Acoustic Scene C
 ### Installation
 1. Clone this repository:
 ```bash
-git clone [your-repository-url]
+git clone https://github.com/ebb351/DCASE-2022-Task-1/tree/main/models
 cd DCASE-2022-Task-1
 ```
 
