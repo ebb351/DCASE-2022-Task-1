@@ -53,7 +53,7 @@ Relevant Files:
 These are intended to be used as input to the `sota_baseline.py` model, based on Singh & Surrey's submission to the 2022 DCASE challenge. Our improvements models include scattering transforms in place of mel spectrograms.
 
 ### Scattering Transforms
-[Add description and instructions for scattering transforms]
+Download from [Google Drive](https://drive.google.com/drive/folders/1Tc_duS9sVX9e9o62qECTafI2xk5AN-Y7?usp=drive_link)
 
 ## Running the Baseline Model
 
