@@ -22,23 +22,28 @@ import matplotlib.pyplot as plt
 from datetime import datetime
 
 def load_data():
-    """Load and preprocess the DCASE2022 dataset from numpy mel files."""
-    print("🔍 Loading data...")
-    BASE_PATH = 'data/mel_spec'
-    
-    # Load training features and labels
-    x_train = np.load(os.path.join(BASE_PATH, 'data_train.npy'))
-    y_train = np.load(os.path.join(BASE_PATH, 'label_train.npy'))
-    
+    """Load and preprocess the DCASE2022 dataset from scattering transform numpy files."""
+    print("🔍 Loading scattering transform data...")
+    BASE_PATH = 'data/scattering_transform'
+
+    # Load and concatenate training features and labels
+    x_train_1 = np.load(os.path.join(BASE_PATH, 'X_train_part_1.npy'))
+    x_train_2 = np.load(os.path.join(BASE_PATH, 'X_train_part_2.npy'))
+    y_train_1 = np.load(os.path.join(BASE_PATH, 'y_train_part_1_num.npy'))
+    y_train_2 = np.load(os.path.join(BASE_PATH, 'y_train_part_2_num.npy'))
+
+    x_train = np.concatenate([x_train_1, x_train_2], axis=0)
+    y_train = np.concatenate([y_train_1, y_train_2], axis=0)
+
     # Load test features and labels
-    x_test = np.load(os.path.join(BASE_PATH, 'data_test.npy'))
-    y_test = np.load(os.path.join(BASE_PATH, 'label_test.npy'))
-    
-    print(f"📊 Train features shape: {x_train.shape}")
-    print(f"📊 Train labels shape: {y_train.shape}")
+    x_test = np.load(os.path.join(BASE_PATH, 'X_test.npy'))
+    y_test = np.load(os.path.join(BASE_PATH, 'y_test_num.npy'))
+
+    print(f"📊 Train features shape (before split): {x_train.shape}")
+    print(f"📊 Train labels shape (before split): {y_train.shape}")
     print(f"📊 Test features shape: {x_test.shape}")
     print(f"📊 Test labels shape: {y_test.shape}")
-    
+
     # Split training data into train and validation sets
     x_train, x_val, y_train, y_val = train_test_split(
         x_train, y_train, test_size=0.2, random_state=42, stratify=y_train
@@ -76,15 +81,16 @@ def create_datasets(x_train, x_val, x_test, labels_train, labels_val, labels_tes
     
     return train_dataset, val_dataset, test_dataset
 
-def create_model(input_shape=(40, 51), num_classes=10):
+def create_model(input_shape=(52, 128), num_classes=10):
     """Create the CNN model architecture matching Singh Surrey's DCASE2022 individual model."""
     model = models.Sequential()
-    
+    model.add(layers.Input(shape=(*input_shape, 1)))
+
     # C1: Convolution + BN + tanh
-    model.add(layers.Conv2D(16, kernel_size=(3, 3), padding='same', input_shape=(*input_shape, 1)))
+    model.add(layers.Conv2D(16, kernel_size=(3, 3), padding='same'))
     model.add(layers.BatchNormalization())
     model.add(layers.Activation('tanh'))
-    
+
     # C2: Convolution + BN + ReLU
     model.add(layers.Conv2D(16, kernel_size=(3, 3), padding='same'))
     model.add(layers.BatchNormalization())
@@ -92,7 +98,7 @@ def create_model(input_shape=(40, 51), num_classes=10):
 
     # P1: Average Pooling (5x5)
     model.add(layers.AveragePooling2D(pool_size=(5, 5)))
-    
+
     # C3: Convolution + BN + tanh
     model.add(layers.Conv2D(32, kernel_size=(3, 3), padding='same'))
     model.add(layers.BatchNormalization())
@@ -100,10 +106,10 @@ def create_model(input_shape=(40, 51), num_classes=10):
 
     # P2: Average Pooling (4x10)
     model.add(layers.AveragePooling2D(pool_size=(4, 10)))
-    
+
     # Flatten before dense layers
     model.add(layers.Flatten())
-    
+
     # Dense + tanh (100 units)
     model.add(layers.Dense(100, activation='tanh'))
 
