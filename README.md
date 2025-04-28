@@ -72,7 +72,7 @@ The baseline model includes TensorBoard integration for real-time training monit
 
 To view the TensorBoard dashboard:
 ```bash
-tensorboard --logdir logs/fit
+tensorboard --logdir logs/all_models
 ```
 
 Then open your web browser and navigate to:
