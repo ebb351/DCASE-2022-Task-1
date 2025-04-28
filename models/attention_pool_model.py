@@ -48,27 +48,71 @@ class AttentionPooling2D(layers.Layer):
         """
         super().__init__(**kwargs)
         self.pool_size = pool_size
-        self.attn_conv = tf.keras.layers.Conv2D(
-            filters=1, kernel_size=1, activation=None
+        
+        # Simplified attention mechanism with L2 regularization to prevent overfitting
+        self.channel_attn = tf.keras.layers.Conv2D(
+            filters=32,  # Reduced from 64
+            kernel_size=1, 
+            activation='relu', 
+            use_bias=True,
+            kernel_regularizer=tf.keras.regularizers.l2(0.001)  # Add L2 regularization
         )
         
-    def call(self, inputs):
+        # Spatial attention with regularization
+        self.spatial_attn = tf.keras.layers.Conv2D(
+            filters=1, 
+            kernel_size=3, 
+            padding='same', 
+            activation=None, 
+            use_bias=True,
+            kernel_regularizer=tf.keras.regularizers.l2(0.001)  # Add L2 regularization
+        )
+        
+        # Add batch normalization for better training stability
+        self.bn = tf.keras.layers.BatchNormalization()
+        
+    def call(self, inputs, training=None):
         """
         Forward pass of the layer.
         
         Args:
             inputs (tf.Tensor): Input tensor of shape (batch_size, height, width, channels)
+            training (bool): Whether the layer is in training mode
             
         Returns:
             tf.Tensor: Pooled and attention-weighted output tensor
         """
-        x = tf.nn.avg_pool2d(inputs, ksize=self.pool_size, strides=self.pool_size, padding='VALID')
-        attn_logits = self.attn_conv(x)
-        attn_flat = tf.reshape(attn_logits, [tf.shape(x)[0], -1])
-        attn_soft = tf.nn.softmax(attn_flat, axis=-1)
-        attn_map = tf.reshape(attn_soft, tf.shape(attn_logits))
-        x = x * attn_map
-        return x
+        # First do the basic average pooling
+        pooled = tf.nn.avg_pool2d(inputs, ksize=self.pool_size, strides=self.pool_size, padding='VALID')
+        
+        # Enhanced attention mechanism
+        # 1. Project to higher dimensional space for better representation
+        x = self.channel_attn(pooled)
+        x = self.bn(x, training=training)
+        
+        # 2. Generate spatial attention weights
+        attn_logits = self.spatial_attn(x)
+        
+        # 3. Apply softmax over spatial dimensions (H,W) to normalize attention
+        # Reshape to (batch, height*width, 1)
+        batch_size = tf.shape(attn_logits)[0]
+        height = tf.shape(attn_logits)[1]
+        width = tf.shape(attn_logits)[2]
+        
+        attn_flat = tf.reshape(attn_logits, [batch_size, height * width, 1])
+        attn_weights = tf.nn.softmax(attn_flat, axis=1)  # Softmax over spatial dimensions
+        
+        # Reshape back to (batch, height, width, 1)
+        attn_map = tf.reshape(attn_weights, [batch_size, height, width, 1])
+        
+        # Apply attention weights to pooled features
+        weighted_features = pooled * attn_map
+        
+        # Mix with original pooled features to avoid over-specialization
+        alpha = 0.7  # Mixing factor
+        mixed_features = alpha * weighted_features + (1-alpha) * pooled
+        
+        return mixed_features
     
     def compute_output_shape(self, input_shape):
         return (
@@ -77,6 +121,11 @@ class AttentionPooling2D(layers.Layer):
             input_shape[2] // self.pool_size[1],
             input_shape[3]
         )
+        
+    def get_config(self):
+        config = super().get_config()
+        config.update({"pool_size": self.pool_size})
+        return config
 
 def load_data():
     """Load and preprocess the DCASE2022 dataset from numpy mel files."""
@@ -138,32 +187,42 @@ def create_model(input_shape=(40, 51), num_classes=10):
     model = models.Sequential()
     
     # C1: Convolution + BN + tanh
-    model.add(layers.Conv2D(16, kernel_size=(3, 3), padding='same', input_shape=(*input_shape, 1)))
+    model.add(layers.Conv2D(16, kernel_size=(3, 3), padding='same', input_shape=(*input_shape, 1),
+                           kernel_regularizer=tf.keras.regularizers.l2(0.001)))  # Add L2 regularization
     model.add(layers.BatchNormalization())
     model.add(layers.Activation('tanh'))
+    model.add(layers.Dropout(0.4))  # Increased dropout from 0.3 to 0.4
     
     # C2: Convolution + BN + ReLU
-    model.add(layers.Conv2D(16, kernel_size=(3, 3), padding='same'))
+    model.add(layers.Conv2D(32, kernel_size=(3, 3), padding='same',
+                           kernel_regularizer=tf.keras.regularizers.l2(0.001)))  # Add L2 regularization
     model.add(layers.BatchNormalization())
     model.add(layers.Activation('relu'))
-
-    # P1: Attention Pooling (5x5)
-    model.add(AttentionPooling2D(pool_size=(5, 5)))
+    model.add(layers.Dropout(0.4))  # Increased dropout from 0.3 to 0.4
+    
+    # P1: Attention Pooling
+    model.add(AttentionPooling2D(pool_size=(2, 2)))
+    model.add(layers.Dropout(0.5))  # Increased dropout significantly after attention pooling
     
     # C3: Convolution + BN + tanh
-    model.add(layers.Conv2D(32, kernel_size=(3, 3), padding='same'))
+    model.add(layers.Conv2D(32, kernel_size=(3, 3), padding='same',
+                           kernel_regularizer=tf.keras.regularizers.l2(0.001)))  # Add L2 regularization
     model.add(layers.BatchNormalization())
     model.add(layers.Activation('tanh'))
-
-    # P2: Attention Pooling (4x10)
-    model.add(AttentionPooling2D(pool_size=(4, 10)))
+    model.add(layers.Dropout(0.4))  # Increased dropout from 0.3 to 0.4
+    
+    # P2: Attention Pooling
+    model.add(AttentionPooling2D(pool_size=(2, 2)))
+    model.add(layers.Dropout(0.5))  # Increased dropout significantly after attention pooling
     
     # Flatten before dense layers
     model.add(layers.Flatten())
     
-    # Dense + tanh (100 units)
-    model.add(layers.Dense(100, activation='tanh'))
-
+    # Dense + tanh (32 units)
+    model.add(layers.Dense(32, activation='tanh',
+                          kernel_regularizer=tf.keras.regularizers.l2(0.001)))  # Add L2 regularization
+    model.add(layers.Dropout(0.5))  # Increased dropout from 0.3 to 0.5
+    
     # Classification + softmax (10 units)
     model.add(layers.Dense(num_classes, activation='softmax'))
     
@@ -219,10 +278,10 @@ def main():
     print("\n🤖 Creating and compiling model...")
     model = create_model()
     
-    # Compile with Adadelta optimizer and categorical crossentropy
+    # Compile with Adam optimizer and categorical crossentropy
     model.compile(
         loss=tf.keras.losses.categorical_crossentropy,
-        optimizer=tf.keras.optimizers.Adadelta(),
+        optimizer=tf.keras.optimizers.Adam(learning_rate=0.0005),  # Reduced learning rate from 0.001 to 0.0005
         metrics=['accuracy']
     )
     
@@ -233,20 +292,20 @@ def main():
     callbacks = [
         tf.keras.callbacks.TensorBoard(
             log_dir=log_dir,
-            histogram_freq=1,  # Log histograms every epoch
-            write_graph=True,  # Log the model graph
-            write_images=True,  # Log model weights as images
-            update_freq='epoch'  # Log metrics at the end of each epoch
+            histogram_freq=1,
+            write_graph=True,
+            write_images=True,
+            update_freq='epoch'
         ),
         tf.keras.callbacks.EarlyStopping(
             monitor='val_loss',
-            patience=10,  # Stop if validation loss doesn't improve for 10 epochs
+            patience=15,  # Increased patience from 10 to 15
             restore_best_weights=True,
             verbose=1
         ),
         tf.keras.callbacks.EarlyStopping(
             monitor='val_accuracy',
-            patience=5,  # Stop if validation accuracy doesn't improve for 5 epochs
+            patience=10,  # Increased patience from 5 to 10
             restore_best_weights=True,
             verbose=1
         ),
@@ -255,6 +314,14 @@ def main():
             monitor='val_accuracy',
             save_best_only=True,
             verbose=1
+        ),
+        # Add learning rate reduction on plateau
+        tf.keras.callbacks.ReduceLROnPlateau(
+            monitor='val_loss',
+            factor=0.5,
+            patience=5,
+            verbose=1,
+            min_lr=0.00001
         )
     ]
     
