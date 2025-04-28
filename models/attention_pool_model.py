@@ -1,16 +1,19 @@
 """
-DCASE2022 Challenge - Acoustic Scene Classification Baseline Model
+DCASE2022 Challenge - Acoustic Scene Classification Baseline Model with Attention Pooling
 
-This script implements a baseline convolutional neural network (CNN) for acoustic scene classification
-using mel-spectrogram features. The model architecture is specifically designed for the DCASE2022
-challenge dataset.
+This script implements a convolutional neural network (CNN) for acoustic scene classification
+using mel-spectrogram features with attention pooling. The model architecture is specifically 
+designed for the DCASE2022 challenge dataset.
 
 Key Features:
 - Input: Mel-spectrogram features of shape (40, 51)
-- Architecture: Three convolutional blocks with increasing complexity
+- Architecture: Three convolutional blocks with attention pooling
 - Output: 10-class classification (acoustic scenes)
 - Training: Includes early stopping and model checkpointing
 - Evaluation: Provides accuracy metrics and training visualization
+
+Author: [Your Name]
+Date: [Current Date]
 """
 
 import os
@@ -21,29 +24,78 @@ from sklearn.model_selection import train_test_split
 import matplotlib.pyplot as plt
 from datetime import datetime
 
+class AttentionPooling2D(layers.Layer):
+    """
+    Custom attention pooling layer that learns to focus on important regions of the input.
+    
+    This layer combines average pooling with learned attention weights to dynamically
+    focus on the most relevant parts of the input feature maps. The attention weights
+    are learned during training, allowing the model to adaptively pool features based
+    on their importance.
+    
+    Attributes:
+        pool_size (tuple): Size of the pooling window (height, width)
+        attention_weights (tf.Variable): Learned weights for attention mechanism
+    """
+    
+    def __init__(self, pool_size=(2, 2), **kwargs):
+        """
+        Initialize the AttentionPooling2D layer.
+        
+        Args:
+            pool_size (tuple): Size of the pooling window (height, width)
+            **kwargs: Additional keyword arguments passed to the parent class
+        """
+        super().__init__(**kwargs)
+        self.pool_size = pool_size
+        self.attn_conv = tf.keras.layers.Conv2D(
+            filters=1, kernel_size=1, activation=None
+        )
+        
+    def call(self, inputs):
+        """
+        Forward pass of the layer.
+        
+        Args:
+            inputs (tf.Tensor): Input tensor of shape (batch_size, height, width, channels)
+            
+        Returns:
+            tf.Tensor: Pooled and attention-weighted output tensor
+        """
+        x = tf.nn.avg_pool2d(inputs, ksize=self.pool_size, strides=self.pool_size, padding='VALID')
+        attn_logits = self.attn_conv(x)
+        attn_flat = tf.reshape(attn_logits, [tf.shape(x)[0], -1])
+        attn_soft = tf.nn.softmax(attn_flat, axis=-1)
+        attn_map = tf.reshape(attn_soft, tf.shape(attn_logits))
+        x = x * attn_map
+        return x
+    
+    def compute_output_shape(self, input_shape):
+        return (
+            input_shape[0],
+            input_shape[1] // self.pool_size[0],
+            input_shape[2] // self.pool_size[1],
+            input_shape[3]
+        )
+
 def load_data():
-    """Load and preprocess the DCASE2022 dataset from scattering transform numpy files."""
-    print("🔍 Loading scattering transform data...")
-    BASE_PATH = 'data/scattering_transform'
-
-    # Load and concatenate training features and labels
-    x_train_1 = np.load(os.path.join(BASE_PATH, 'X_train_part_1.npy'))
-    x_train_2 = np.load(os.path.join(BASE_PATH, 'X_train_part_2.npy'))
-    y_train_1 = np.load(os.path.join(BASE_PATH, 'y_train_part_1_num.npy'))
-    y_train_2 = np.load(os.path.join(BASE_PATH, 'y_train_part_2_num.npy'))
-
-    x_train = np.concatenate([x_train_1, x_train_2], axis=0)
-    y_train = np.concatenate([y_train_1, y_train_2], axis=0)
-
+    """Load and preprocess the DCASE2022 dataset from numpy mel files."""
+    print("🔍 Loading data...")
+    BASE_PATH = 'data/mel_spec'
+    
+    # Load training features and labels
+    x_train = np.load(os.path.join(BASE_PATH, 'data_train.npy'))
+    y_train = np.load(os.path.join(BASE_PATH, 'label_train.npy'))
+    
     # Load test features and labels
-    x_test = np.load(os.path.join(BASE_PATH, 'X_test.npy'))
-    y_test = np.load(os.path.join(BASE_PATH, 'y_test_num.npy'))
-
-    print(f"📊 Train features shape (before split): {x_train.shape}")
-    print(f"📊 Train labels shape (before split): {y_train.shape}")
+    x_test = np.load(os.path.join(BASE_PATH, 'data_test.npy'))
+    y_test = np.load(os.path.join(BASE_PATH, 'label_test.npy'))
+    
+    print(f"📊 Train features shape: {x_train.shape}")
+    print(f"📊 Train labels shape: {y_train.shape}")
     print(f"📊 Test features shape: {x_test.shape}")
     print(f"📊 Test labels shape: {y_test.shape}")
-
+    
     # Split training data into train and validation sets
     x_train, x_val, y_train, y_val = train_test_split(
         x_train, y_train, test_size=0.2, random_state=42, stratify=y_train
@@ -81,41 +133,40 @@ def create_datasets(x_train, x_val, x_test, labels_train, labels_val, labels_tes
     
     return train_dataset, val_dataset, test_dataset
 
-def create_model(input_shape=(52, 128), num_classes=10):
-    """Create the CNN model architecture matching Singh Surrey's DCASE2022 individual model."""
+def create_model(input_shape=(40, 51), num_classes=10):
+    """Create the CNN model architecture with attention pooling."""
     model = models.Sequential()
-    model.add(layers.Input(shape=(*input_shape, 1)))
-
+    
     # C1: Convolution + BN + tanh
-    model.add(layers.Conv2D(16, kernel_size=(3, 3), padding='same'))
+    model.add(layers.Conv2D(16, kernel_size=(3, 3), padding='same', input_shape=(*input_shape, 1)))
     model.add(layers.BatchNormalization())
     model.add(layers.Activation('tanh'))
-
+    
     # C2: Convolution + BN + ReLU
     model.add(layers.Conv2D(16, kernel_size=(3, 3), padding='same'))
     model.add(layers.BatchNormalization())
     model.add(layers.Activation('relu'))
 
-    # P1: Average Pooling (5x5)
-    model.add(layers.AveragePooling2D(pool_size=(5, 5)))
-
+    # P1: Attention Pooling (5x5)
+    model.add(AttentionPooling2D(pool_size=(5, 5)))
+    
     # C3: Convolution + BN + tanh
     model.add(layers.Conv2D(32, kernel_size=(3, 3), padding='same'))
     model.add(layers.BatchNormalization())
     model.add(layers.Activation('tanh'))
 
-    # P2: Average Pooling (4x10)
-    model.add(layers.AveragePooling2D(pool_size=(4, 10)))
-
+    # P2: Attention Pooling (4x10)
+    model.add(AttentionPooling2D(pool_size=(4, 10)))
+    
     # Flatten before dense layers
     model.add(layers.Flatten())
-
+    
     # Dense + tanh (100 units)
     model.add(layers.Dense(100, activation='tanh'))
 
     # Classification + softmax (10 units)
     model.add(layers.Dense(num_classes, activation='softmax'))
-
+    
     return model
 
 def plot_training_history(history):
@@ -147,7 +198,7 @@ def main():
     tf.random.set_seed(42)
     
     # Create timestamped log directory for TensorBoard
-    log_dir = os.path.join("logs", "all_models", "scattering", datetime.now().strftime("%Y%m%d-%H%M%S"))
+    log_dir = os.path.join("logs", "all_models", "attention_pool", datetime.now().strftime("%Y%m%d-%H%M%S"))
     os.makedirs(log_dir, exist_ok=True)
     
     # Load data
@@ -214,7 +265,7 @@ def main():
     history = model.fit(
         train_dataset,
         validation_data=val_dataset,
-        epochs=50, # can improve further with more epochs
+        epochs=50,
         callbacks=callbacks,
         verbose=2
     )
