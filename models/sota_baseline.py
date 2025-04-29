@@ -14,12 +14,17 @@ Key Features:
 """
 
 import os
+import sys
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras import layers, models
 from sklearn.model_selection import train_test_split
 import matplotlib.pyplot as plt
 from datetime import datetime
+
+# Add the project root directory to the Python path
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from utils.test_logger import log_test_results, get_unique_model_path
 
 def load_data():
     """Load and preprocess the DCASE2022 dataset from numpy mel files."""
@@ -101,6 +106,9 @@ def create_model(input_shape=(40, 51), num_classes=10):
     # P2: Average Pooling (4x10)
     model.add(layers.AveragePooling2D(pool_size=(4, 10)))
     
+    # Final Pooling before flattening
+    model.add(layers.AveragePooling2D(pool_size=(2, 2)))
+    
     # Flatten before dense layers
     model.add(layers.Flatten())
     
@@ -141,8 +149,11 @@ def main():
     tf.random.set_seed(42)
     
     # Create timestamped log directory for TensorBoard
-    log_dir = os.path.join("logs", "fit", datetime.now().strftime("%Y%m%d-%H%M%S"))
+    log_dir = os.path.join("logs", "all_models", "sota_baseline", datetime.now().strftime("%Y%m%d-%H%M%S"))
     os.makedirs(log_dir, exist_ok=True)
+    
+    # Get unique model path
+    model_path = get_unique_model_path("sota_baseline")
     
     # Load data
     x_train, x_val, x_test, y_train, y_val, y_test = load_data()
@@ -176,25 +187,25 @@ def main():
     callbacks = [
         tf.keras.callbacks.TensorBoard(
             log_dir=log_dir,
-            histogram_freq=1,  # Log histograms every epoch
-            write_graph=True,  # Log the model graph
-            write_images=True,  # Log model weights as images
-            update_freq='epoch'  # Log metrics at the end of each epoch
+            histogram_freq=1,
+            write_graph=True,
+            write_images=True,
+            update_freq='epoch'
         ),
         tf.keras.callbacks.EarlyStopping(
             monitor='val_loss',
-            patience=10,  # Stop if validation loss doesn't improve for 10 epochs
+            patience=10,
             restore_best_weights=True,
             verbose=1
         ),
         tf.keras.callbacks.EarlyStopping(
             monitor='val_accuracy',
-            patience=5,  # Stop if validation accuracy doesn't improve for 5 epochs
+            patience=5,
             restore_best_weights=True,
             verbose=1
         ),
         tf.keras.callbacks.ModelCheckpoint(
-            'models/best_model.keras',
+            model_path,
             monitor='val_accuracy',
             save_best_only=True,
             verbose=1
@@ -225,11 +236,21 @@ def main():
     print(f"\n✅ Test accuracy: {test_acc:.4f}")
     print(f"✅ Test log loss: {logloss:.4f}")
     
+    # Log test results
+    log_test_results(
+        model_name="sota_baseline",
+        test_acc=test_acc,
+        test_logloss=logloss,
+        model_path=model_path,
+        tensorboard_logdir=log_dir
+    )
+    
     # Plot training history
     print("\n📊 Plotting training history...")
     plot_training_history(history)
     print("\n🎉 Training completed! Results saved in 'training_history.png'")
     print(f"🎉 TensorBoard logs saved to: {log_dir}")
+    print(f"🎉 Model saved to: {model_path}")
 
 if __name__ == '__main__':
     main()

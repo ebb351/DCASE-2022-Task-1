@@ -1,0 +1,2 @@
+timestamp,model_name,test_accuracy,test_logloss,model_path,tensorboard_logdir
+2025-04-28 19:29:55,attention_pool,0.4378369152545929,1.5936424,models/attention_pool_20250428-164846.keras,logs/all_models/attention_pool/20250428-164846
