@@ -17,7 +17,7 @@ import os
 import sys
 import numpy as np
 import tensorflow as tf
-from tensorflow.keras import layers, models
+from tensorflow.keras import layers, models, regularizers
 from sklearn.model_selection import train_test_split
 import matplotlib.pyplot as plt
 from datetime import datetime
@@ -73,53 +73,60 @@ def load_data():
 
     return x_train, x_val, x_test, y_train, y_val, y_test
 
-def create_datasets(x_train, x_val, x_test, labels_train, labels_val, labels_test, batch_size=32):
+def create_datasets(x_train, x_val, x_test, labels_train, labels_val, labels_test, batch_size=64):
     """Create tf.data.Dataset objects for training, validation, and testing."""
     train_dataset = tf.data.Dataset.from_tensor_slices((x_train, labels_train))
-    train_dataset = train_dataset.shuffle(buffer_size=1024).batch(batch_size)
+    train_dataset = train_dataset.shuffle(buffer_size=1024).batch(batch_size).prefetch(tf.data.AUTOTUNE)
 
     val_dataset = tf.data.Dataset.from_tensor_slices((x_val, labels_val))
-    val_dataset = val_dataset.batch(batch_size)
+    val_dataset = val_dataset.batch(batch_size).prefetch(tf.data.AUTOTUNE)
 
     test_dataset = tf.data.Dataset.from_tensor_slices((x_test, labels_test))
-    test_dataset = test_dataset.batch(batch_size)
+    test_dataset = test_dataset.batch(batch_size).prefetch(tf.data.AUTOTUNE)
     
     return train_dataset, val_dataset, test_dataset
 
 def create_model(input_shape=(52, 128), num_classes=10):
-    """Create the CNN model architecture matching Singh Surrey's DCASE2022 individual model."""
+    """Create the CNN model architecture for scattering transform features."""
     model = models.Sequential()
     model.add(layers.Input(shape=(*input_shape, 1)))
 
-    # C1: Convolution + BN + tanh
+    # First convolution block
     model.add(layers.Conv2D(16, kernel_size=(3, 3), padding='same'))
     model.add(layers.BatchNormalization())
     model.add(layers.Activation('tanh'))
+    model.add(layers.MaxPooling2D(pool_size=(2, 2)))
+    model.add(layers.Dropout(0.2))
 
-    # C2: Convolution + BN + ReLU
+    # Second convolution block
     model.add(layers.Conv2D(16, kernel_size=(3, 3), padding='same'))
     model.add(layers.BatchNormalization())
     model.add(layers.Activation('relu'))
+    model.add(layers.MaxPooling2D(pool_size=(2, 2)))
+    model.add(layers.Dropout(0.25))
 
-    # P1: Average Pooling (5x5)
-    model.add(layers.AveragePooling2D(pool_size=(5, 5)))
-
-    # C3: Convolution + BN + tanh
-    model.add(layers.Conv2D(32, kernel_size=(3, 3), padding='same'))
+    # Third convolution block
+    model.add(layers.Conv2D(48, kernel_size=(3, 3), padding='same'))
     model.add(layers.BatchNormalization())
-    model.add(layers.Activation('tanh'))
+    model.add(layers.Activation('relu'))
+    model.add(layers.MaxPooling2D(pool_size=(2, 2)))
+    model.add(layers.Dropout(0.3))
 
-    # P2: Average Pooling (4x10)
-    model.add(layers.AveragePooling2D(pool_size=(4, 10)))
+    # Fourth convolution block (not sure if we can use this, not 4th block in the original model)
+    # model.add(layers.Conv2D(64, kernel_size=(3, 3), padding='same'))
+    # model.add(layers.BatchNormalization())
+    # model.add(layers.Activation('relu'))
+    # model.add(layers.MaxPooling2D(pool_size=(2, 2)))
+    # model.add(layers.Dropout(0.35))
 
-    # Final Pooling before flattening
-    model.add(layers.AveragePooling2D(pool_size=(2, 2)))
+    # Global pooling instead of flatten
+    model.add(layers.GlobalAveragePooling2D())
 
-    # Flatten before dense layers
-    model.add(layers.Flatten())
-
-    # Dense + tanh (100 units)
-    model.add(layers.Dense(100, activation='tanh'))
+    # Dense layer with L2 regularization
+    model.add(layers.Dense(100, kernel_regularizer=regularizers.l2(1e-4)))
+    model.add(layers.BatchNormalization())
+    model.add(layers.Activation('relu'))
+    model.add(layers.Dropout(0.4))
 
     # Classification + softmax (10 units)
     model.add(layers.Dense(num_classes, activation='softmax'))
@@ -164,25 +171,20 @@ def main():
     # Load data
     x_train, x_val, x_test, y_train, y_val, y_test = load_data()
     
-    # Create datasets
-    batch_size = 32
-    train_dataset = tf.data.Dataset.from_tensor_slices((x_train, y_train))
-    train_dataset = train_dataset.shuffle(buffer_size=1024).batch(batch_size)
-
-    val_dataset = tf.data.Dataset.from_tensor_slices((x_val, y_val))
-    val_dataset = val_dataset.batch(batch_size)
-
-    test_dataset = tf.data.Dataset.from_tensor_slices((x_test, y_test))
-    test_dataset = test_dataset.batch(batch_size)
+    # Create datasets with increased batch size
+    batch_size = 64
+    train_dataset, val_dataset, test_dataset = create_datasets(
+        x_train, x_val, x_test, y_train, y_val, y_test, batch_size=batch_size
+    )
     
     # Create and compile model
     print("\n🤖 Creating and compiling model...")
     model = create_model()
     
-    # Compile with Adadelta optimizer and categorical crossentropy
+    # Use a fixed learning rate instead of a scheduler to work with ReduceLROnPlateau
     model.compile(
         loss=tf.keras.losses.categorical_crossentropy,
-        optimizer=tf.keras.optimizers.Adadelta(),
+        optimizer=tf.keras.optimizers.Adam(learning_rate=0.001),
         metrics=['accuracy']
     )
     
@@ -200,14 +202,15 @@ def main():
         ),
         tf.keras.callbacks.EarlyStopping(
             monitor='val_loss',
-            patience=10,
+            patience=15,
             restore_best_weights=True,
             verbose=1
         ),
-        tf.keras.callbacks.EarlyStopping(
-            monitor='val_accuracy',
+        tf.keras.callbacks.ReduceLROnPlateau(
+            monitor='val_loss',
+            factor=0.5,
             patience=5,
-            restore_best_weights=True,
+            min_lr=1e-6,
             verbose=1
         ),
         tf.keras.callbacks.ModelCheckpoint(
@@ -218,14 +221,14 @@ def main():
         )
     ]
     
-    # Train the model
+    # Train the model with extended epochs
     print("\n🚀 Starting training...")
     print(f"📊 TensorBoard logs will be saved to: {log_dir}")
     print("📊 To view TensorBoard, run: tensorboard --logdir logs/fit")
     history = model.fit(
         train_dataset,
         validation_data=val_dataset,
-        epochs=50,
+        epochs=100,
         callbacks=callbacks,
         verbose=2
     )

@@ -1,2 +1,3 @@
 timestamp,model_name,test_accuracy,test_logloss,model_path,tensorboard_logdir
 2025-04-28 19:29:55,attention_pool,0.4378369152545929,1.5936424,models/attention_pool_20250428-164846.keras,logs/all_models/attention_pool/20250428-164846
+2025-04-30 04:57:47,scattering,0.7117863893508911,0.7842029,models/scattering_20250430-011738.keras,logs/all_models/scattering/20250430-011738

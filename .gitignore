@@ -5,3 +5,5 @@ logs/
 best_model.h5
 *.png
 *.keras
+*/__pycache__/*
+*.pyc

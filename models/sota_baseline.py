@@ -17,13 +17,15 @@ import os
 import sys
 import numpy as np
 import tensorflow as tf
-from tensorflow.keras import layers, models
+from tensorflow.keras import layers, models, regularizers
 from sklearn.model_selection import train_test_split
 import matplotlib.pyplot as plt
 from datetime import datetime
 
 # Add the project root directory to the Python path
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, project_root)
+
 from utils.test_logger import log_test_results, get_unique_model_path
 
 def load_data():
@@ -85,35 +87,41 @@ def create_model(input_shape=(40, 51), num_classes=10):
     """Create the CNN model architecture matching Singh Surrey's DCASE2022 individual model."""
     model = models.Sequential()
     
-    # C1: Convolution + BN + tanh
+    # First convolution block
     model.add(layers.Conv2D(16, kernel_size=(3, 3), padding='same', input_shape=(*input_shape, 1)))
     model.add(layers.BatchNormalization())
     model.add(layers.Activation('tanh'))
+    # model.add(layers.MaxPooling2D(pool_size=(2, 2))) # not used in the original model
+    model.add(layers.Dropout(0.2))
     
-    # C2: Convolution + BN + ReLU
+    # Second convolution block
     model.add(layers.Conv2D(16, kernel_size=(3, 3), padding='same'))
     model.add(layers.BatchNormalization())
     model.add(layers.Activation('relu'))
+    # model.add(layers.MaxPooling2D(pool_size=(2, 2))) # not used in the original model
+    model.add(layers.Dropout(0.25))
 
-    # P1: Average Pooling (5x5)
+    # Average Pooling (5x5)
     model.add(layers.AveragePooling2D(pool_size=(5, 5)))
-    
-    # C3: Convolution + BN + tanh
-    model.add(layers.Conv2D(32, kernel_size=(3, 3), padding='same'))
+
+    # Third convolution block
+    model.add(layers.Conv2D(48, kernel_size=(3, 3), padding='same'))
     model.add(layers.BatchNormalization())
     model.add(layers.Activation('tanh'))
+    # model.add(layers.MaxPooling2D(pool_size=(2, 2))) # not used in the original model
+    model.add(layers.Dropout(0.3))
 
     # P2: Average Pooling (4x10)
     model.add(layers.AveragePooling2D(pool_size=(4, 10)))
-    
-    # Final Pooling before flattening
-    model.add(layers.AveragePooling2D(pool_size=(2, 2)))
-    
+
     # Flatten before dense layers
-    model.add(layers.Flatten())
+    model.add(layers.GlobalAveragePooling2D()) # Not specified how they flattened in the original model
     
-    # Dense + tanh (100 units)
-    model.add(layers.Dense(100, activation='tanh'))
+    # Dense layer with L2 regularization
+    model.add(layers.Dense(100, kernel_regularizer=regularizers.l2(1e-4)))
+    model.add(layers.BatchNormalization())
+    model.add(layers.Activation('tanh'))
+    model.add(layers.Dropout(0.4))
 
     # Classification + softmax (10 units)
     model.add(layers.Dense(num_classes, activation='softmax'))
@@ -160,14 +168,9 @@ def main():
     
     # Create datasets
     batch_size = 32
-    train_dataset = tf.data.Dataset.from_tensor_slices((x_train, y_train))
-    train_dataset = train_dataset.shuffle(buffer_size=1024).batch(batch_size)
-
-    val_dataset = tf.data.Dataset.from_tensor_slices((x_val, y_val))
-    val_dataset = val_dataset.batch(batch_size)
-
-    test_dataset = tf.data.Dataset.from_tensor_slices((x_test, y_test))
-    test_dataset = test_dataset.batch(batch_size)
+    train_dataset, val_dataset, test_dataset = create_datasets(
+        x_train, x_val, x_test, y_train, y_val, y_test, batch_size=batch_size
+    )
     
     # Create and compile model
     print("\n🤖 Creating and compiling model...")
@@ -236,7 +239,7 @@ def main():
     print(f"\n✅ Test accuracy: {test_acc:.4f}")
     print(f"✅ Test log loss: {logloss:.4f}")
     
-    # Log test results
+    # Log test results to CSV
     log_test_results(
         model_name="sota_baseline",
         test_acc=test_acc,
