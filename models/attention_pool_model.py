@@ -26,100 +26,146 @@ import matplotlib.pyplot as plt
 from datetime import datetime
 
 # Add the project root directory to the Python path
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, project_root)
+
 from utils.test_logger import log_test_results, get_unique_model_path
 
 class AttentionPooling2D(layers.Layer):
     """
-    Custom attention pooling layer that learns to focus on important regions of the input.
+    Custom attention pooling layer for acoustic scene classification.
     
-    This layer combines average pooling with learned attention weights to dynamically
-    focus on the most relevant parts of the input feature maps. The attention weights
-    are learned during training, allowing the model to adaptively pool features based
-    on their importance.
+    This layer implements a multi-path attention mechanism that combines:
+    1. Channel attention: Learns important frequency bands
+    2. Frequency attention: Captures vertical patterns in spectrograms
+    3. Time attention: Captures horizontal patterns in spectrograms
+    
+    The layer first applies average pooling, then uses learned attention weights
+    to focus on important regions. A learnable mixing factor (alpha) controls
+    the balance between attention-weighted and original features.
     
     Attributes:
-        pool_size (tuple): Size of the pooling window (height, width)
-        attention_weights (tf.Variable): Learned weights for attention mechanism
+        pool_size (tuple): Pooling window size (height, width)
+        channel_attn: Channel attention convolution
+        spatial_attn: Spatial attention convolution
+        freq_attn: Frequency-specific attention
+        time_attn: Time-specific attention
+        alpha: Learnable mixing factor
     """
     
     def __init__(self, pool_size=(2, 2), **kwargs):
         """
-        Initialize the AttentionPooling2D layer.
+        Initialize attention pooling layer.
         
         Args:
-            pool_size (tuple): Size of the pooling window (height, width)
-            **kwargs: Additional keyword arguments passed to the parent class
+            pool_size (tuple): Pooling window size (height, width)
+            **kwargs: Additional layer arguments
         """
         super().__init__(**kwargs)
         self.pool_size = pool_size
         
-        # Simplified attention mechanism with L2 regularization to prevent overfitting
+        # Channel attention: Learns important frequency bands
         self.channel_attn = tf.keras.layers.Conv2D(
-            filters=32,  # Reduced from 64
+            filters=32,
             kernel_size=1, 
             activation='relu', 
             use_bias=True,
-            kernel_regularizer=tf.keras.regularizers.l2(0.001)  # Add L2 regularization
+            kernel_regularizer=tf.keras.regularizers.l2(0.001)
         )
         
-        # Spatial attention with regularization
+        # Spatial attention: Learns important regions
         self.spatial_attn = tf.keras.layers.Conv2D(
             filters=1, 
             kernel_size=3, 
             padding='same', 
             activation=None, 
             use_bias=True,
-            kernel_regularizer=tf.keras.regularizers.l2(0.001)  # Add L2 regularization
+            kernel_regularizer=tf.keras.regularizers.l2(0.001)
         )
         
-        # Add batch normalization for better training stability
+        # Frequency attention: Vertical patterns in spectrograms
+        self.freq_attn = tf.keras.layers.Conv2D(
+            filters=32,
+            kernel_size=(3, 1),  # Vertical kernel
+            padding='same',
+            activation='relu',
+            kernel_regularizer=tf.keras.regularizers.l2(0.001)
+        )
+        
+        # Time attention: Horizontal patterns in spectrograms
+        self.time_attn = tf.keras.layers.Conv2D(
+            filters=32,
+            kernel_size=(1, 3),  # Horizontal kernel
+            padding='same',
+            activation='relu',
+            kernel_regularizer=tf.keras.regularizers.l2(0.001)
+        )
+        
+        # Batch normalization for each attention pathway
         self.bn = tf.keras.layers.BatchNormalization()
+        self.bn_freq = tf.keras.layers.BatchNormalization()
+        self.bn_time = tf.keras.layers.BatchNormalization()
+        
+        # Learnable mixing factor (initialized to 0.7)
+        self.alpha = tf.Variable(0.7, trainable=True, dtype=tf.float32)
         
     def call(self, inputs, training=None):
         """
-        Forward pass of the layer.
+        Forward pass of the attention pooling layer.
+        
+        Processing steps:
+        1. Average pooling to reduce spatial dimensions
+        2. Apply channel, frequency, and time attention
+        3. Combine attention pathways
+        4. Generate spatial attention weights
+        5. Apply attention and mix with original features
         
         Args:
-            inputs (tf.Tensor): Input tensor of shape (batch_size, height, width, channels)
-            training (bool): Whether the layer is in training mode
+            inputs (tf.Tensor): Input tensor (batch, height, width, channels)
+            training (bool): Training mode flag
             
         Returns:
-            tf.Tensor: Pooled and attention-weighted output tensor
+            tf.Tensor: Attention-weighted pooled features
         """
-        # First do the basic average pooling
+        # Initial average pooling
         pooled = tf.nn.avg_pool2d(inputs, ksize=self.pool_size, strides=self.pool_size, padding='VALID')
         
-        # Enhanced attention mechanism
-        # 1. Project to higher dimensional space for better representation
+        # Channel attention pathway
         x = self.channel_attn(pooled)
         x = self.bn(x, training=training)
         
-        # 2. Generate spatial attention weights
+        # Frequency attention pathway
+        x_freq = self.freq_attn(pooled)
+        x_freq = self.bn_freq(x_freq, training=training)
+        
+        # Time attention pathway
+        x_time = self.time_attn(pooled)
+        x_time = self.bn_time(x_time, training=training)
+        
+        # Combine attention pathways
+        x = x + x_freq + x_time
+        
+        # Generate spatial attention weights
         attn_logits = self.spatial_attn(x)
         
-        # 3. Apply softmax over spatial dimensions (H,W) to normalize attention
-        # Reshape to (batch, height*width, 1)
+        # Normalize attention weights with softmax
         batch_size = tf.shape(attn_logits)[0]
         height = tf.shape(attn_logits)[1]
         width = tf.shape(attn_logits)[2]
         
         attn_flat = tf.reshape(attn_logits, [batch_size, height * width, 1])
-        attn_weights = tf.nn.softmax(attn_flat, axis=1)  # Softmax over spatial dimensions
-        
-        # Reshape back to (batch, height, width, 1)
+        attn_weights = tf.nn.softmax(attn_flat, axis=1)
         attn_map = tf.reshape(attn_weights, [batch_size, height, width, 1])
         
-        # Apply attention weights to pooled features
+        # Apply attention and mix with original features
         weighted_features = pooled * attn_map
-        
-        # Mix with original pooled features to avoid over-specialization
-        alpha = 0.7  # Mixing factor
-        mixed_features = alpha * weighted_features + (1-alpha) * pooled
+        alpha_sigmoid = tf.sigmoid(self.alpha)  # Constrain between 0 and 1
+        mixed_features = alpha_sigmoid * weighted_features + (1-alpha_sigmoid) * pooled
         
         return mixed_features
     
     def compute_output_shape(self, input_shape):
+        """Compute output shape after pooling."""
         return (
             input_shape[0],
             input_shape[1] // self.pool_size[0],
@@ -128,6 +174,7 @@ class AttentionPooling2D(layers.Layer):
         )
         
     def get_config(self):
+        """Get layer configuration for serialization."""
         config = super().get_config()
         config.update({"pool_size": self.pool_size})
         return config
@@ -192,44 +239,42 @@ def create_model(input_shape=(40, 51), num_classes=10):
     model = models.Sequential()
     
     # C1: Convolution + BN + tanh
-    model.add(layers.Conv2D(16, kernel_size=(3, 3), padding='same', input_shape=(*input_shape, 1),
-                           kernel_regularizer=tf.keras.regularizers.l2(0.001)))
+    model.add(layers.Conv2D(16, kernel_size=(3, 3), padding='same', input_shape=(*input_shape, 1)))
     model.add(layers.BatchNormalization())
     model.add(layers.Activation('tanh'))
-    model.add(layers.Dropout(0.4))
+    model.add(layers.Dropout(0.2))
     
     # C2: Convolution + BN + ReLU
-    model.add(layers.Conv2D(32, kernel_size=(3, 3), padding='same',
-                           kernel_regularizer=tf.keras.regularizers.l2(0.001)))
+    model.add(layers.Conv2D(16, kernel_size=(3, 3), padding='same'))
     model.add(layers.BatchNormalization())
     model.add(layers.Activation('relu'))
-    model.add(layers.Dropout(0.4))
+    model.add(layers.Dropout(0.25))
     
     # P1: Attention Pooling
     model.add(AttentionPooling2D(pool_size=(2, 2)))
-    model.add(layers.Dropout(0.5))
+    model.add(layers.Dropout(0.3))
     
     # C3: Convolution + BN + tanh
-    model.add(layers.Conv2D(32, kernel_size=(3, 3), padding='same',
-                           kernel_regularizer=tf.keras.regularizers.l2(0.001)))
+    model.add(layers.Conv2D(48, kernel_size=(3, 3), padding='same'))
     model.add(layers.BatchNormalization())
     model.add(layers.Activation('tanh'))
-    model.add(layers.Dropout(0.4))
+    model.add(layers.Dropout(0.3))
     
     # P2: Attention Pooling
     model.add(AttentionPooling2D(pool_size=(2, 2)))
-    model.add(layers.Dropout(0.5))
+    model.add(layers.Dropout(0.4))
     
     # Final Pooling before flattening
-    model.add(layers.AveragePooling2D(pool_size=(2, 2)))
+    # model.add(layers.AveragePooling2D(pool_size=(2, 2))) # not used in the original model
     
     # Flatten before dense layers
-    model.add(layers.Flatten())
+    model.add(layers.GlobalAveragePooling2D())
     
-    # Dense + tanh (32 units)
-    model.add(layers.Dense(64, activation='tanh',
-                          kernel_regularizer=tf.keras.regularizers.l2(0.001)))
-    model.add(layers.Dropout(0.5))
+    # Dense layer with L2 regularization
+    model.add(layers.Dense(100, kernel_regularizer=tf.keras.regularizers.l2(0.001)))
+    model.add(layers.BatchNormalization())
+    model.add(layers.Activation('tanh'))
+    model.add(layers.Dropout(0.4))
     
     # Classification + softmax (10 units)
     model.add(layers.Dense(num_classes, activation='softmax'))
@@ -275,7 +320,7 @@ def main():
     x_train, x_val, x_test, y_train, y_val, y_test = load_data()
     
     # Create datasets
-    batch_size = 32
+    batch_size = 64
     train_dataset = tf.data.Dataset.from_tensor_slices((x_train, y_train))
     train_dataset = train_dataset.shuffle(buffer_size=1024).batch(batch_size)
 
@@ -292,7 +337,7 @@ def main():
     # Compile with Adam optimizer and categorical crossentropy
     model.compile(
         loss=tf.keras.losses.categorical_crossentropy,
-        optimizer=tf.keras.optimizers.Adam(learning_rate=0.0005),
+        optimizer=tf.keras.optimizers.Adam(learning_rate=0.001),
         metrics=['accuracy']
     )
     
@@ -310,13 +355,13 @@ def main():
         ),
         tf.keras.callbacks.EarlyStopping(
             monitor='val_loss',
-            patience=15,
+            patience=20,
             restore_best_weights=True,
             verbose=1
         ),
         tf.keras.callbacks.EarlyStopping(
             monitor='val_accuracy',
-            patience=10,
+            patience=20,
             restore_best_weights=True,
             verbose=1
         ),

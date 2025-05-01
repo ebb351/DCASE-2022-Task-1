@@ -28,16 +28,34 @@ sys.path.insert(0, project_root)
 
 from utils.test_logger import log_test_results, get_unique_model_path
 
+def mobilenet_block(x, filters, kernel_size=(3, 3), strides=(1, 1), alpha=1.0, block_id=0):
+    """MobileNet-style depthwise separable conv block."""
+    prefix = f'block_{block_id}_'
+    
+    # Depthwise convolution
+    x = layers.DepthwiseConv2D(kernel_size=kernel_size, strides=strides, padding='same',
+                               use_bias=False, name=prefix + 'dwconv')(x)
+    x = layers.BatchNormalization(name=prefix + 'dw_bn')(x)
+    x = layers.ReLU(6., name=prefix + 'dw_relu')(x)
+    
+    # Pointwise convolution
+    filters = int(filters * alpha)
+    x = layers.Conv2D(filters, kernel_size=(1, 1), padding='same', use_bias=False,
+                      name=prefix + 'pwconv')(x)
+    x = layers.BatchNormalization(name=prefix + 'pw_bn')(x)
+    x = layers.ReLU(6., name=prefix + 'pw_relu')(x)
+    
+    return x
+
 def load_data():
-    """Load and preprocess the DCASE2022 dataset from numpy mel files."""
+    """Load and preprocess the DCASE2022 dataset from numpy files."""
     print("🔍 Loading data...")
     BASE_PATH = 'data/mel_spec'
     
-    # Load training features and labels
+    # Load training and testing features and labels
     x_train = np.load(os.path.join(BASE_PATH, 'data_train.npy'))
     y_train = np.load(os.path.join(BASE_PATH, 'label_train.npy'))
-    
-    # Load test features and labels
+
     x_test = np.load(os.path.join(BASE_PATH, 'data_test.npy'))
     y_test = np.load(os.path.join(BASE_PATH, 'label_test.npy'))
     
@@ -84,50 +102,32 @@ def create_datasets(x_train, x_val, x_test, labels_train, labels_val, labels_tes
     return train_dataset, val_dataset, test_dataset
 
 def create_model(input_shape=(40, 51), num_classes=10):
-    """Create the CNN model architecture matching Singh Surrey's DCASE2022 individual model."""
-    model = models.Sequential()
+    inputs = tf.keras.Input(shape=(*input_shape, 1))
+
+    # Adjusted filter counts to increase total parameter size to ~16K
+    x = mobilenet_block(inputs, filters=32, block_id=1)
+    x = layers.Dropout(0.2)(x)
     
-    # First convolution block
-    model.add(layers.Conv2D(16, kernel_size=(3, 3), padding='same', input_shape=(*input_shape, 1)))
-    model.add(layers.BatchNormalization())
-    model.add(layers.Activation('tanh'))
-    # model.add(layers.MaxPooling2D(pool_size=(2, 2))) # not used in the original model
-    model.add(layers.Dropout(0.2))
+    x = mobilenet_block(x, filters=64, block_id=2)
+    x = layers.Dropout(0.3)(x)
     
-    # Second convolution block
-    model.add(layers.Conv2D(16, kernel_size=(3, 3), padding='same'))
-    model.add(layers.BatchNormalization())
-    model.add(layers.Activation('relu'))
-    # model.add(layers.MaxPooling2D(pool_size=(2, 2))) # not used in the original model
-    model.add(layers.Dropout(0.25))
-
-    # Average Pooling (5x5)
-    model.add(layers.AveragePooling2D(pool_size=(5, 5)))
-
-    # Third convolution block
-    model.add(layers.Conv2D(48, kernel_size=(3, 3), padding='same'))
-    model.add(layers.BatchNormalization())
-    model.add(layers.Activation('tanh'))
-    # model.add(layers.MaxPooling2D(pool_size=(2, 2))) # not used in the original model
-    model.add(layers.Dropout(0.3))
-
-    # P2: Average Pooling (4x10)
-    model.add(layers.AveragePooling2D(pool_size=(4, 10)))
-
-    # Flatten before dense layers
-    model.add(layers.GlobalAveragePooling2D()) # Not specified how they flattened in the original model
+    x = layers.AveragePooling2D(pool_size=(5, 5))(x)
     
-    # Dense layer with L2 regularization
-    model.add(layers.Dense(100, kernel_regularizer=regularizers.l2(1e-4)))
-    model.add(layers.BatchNormalization())
-    model.add(layers.Activation('tanh'))
-    model.add(layers.Dropout(0.4))
+    x = mobilenet_block(x, filters=128, block_id=3)
+    x = layers.Dropout(0.4)(x)
 
-    # Classification + softmax (10 units)
-    model.add(layers.Dense(num_classes, activation='softmax'))
-    
+    x = layers.AveragePooling2D(pool_size=(4, 10))(x)
+    x = layers.GlobalAveragePooling2D()(x)
+
+    x = layers.Dense(100, kernel_regularizer=regularizers.l2(1e-4))(x)
+    x = layers.BatchNormalization()(x)
+    x = layers.Activation('tanh')(x)
+    x = layers.Dropout(0.5)(x)
+
+    outputs = layers.Dense(num_classes, activation='softmax')(x)
+
+    model = tf.keras.Model(inputs=inputs, outputs=outputs)
     return model
-
 def plot_training_history(history):
     """Plot and save training history."""
     plt.figure(figsize=(12, 4))
@@ -157,11 +157,11 @@ def main():
     tf.random.set_seed(42)
     
     # Create timestamped log directory for TensorBoard
-    log_dir = os.path.join("logs", "all_models", "sota_baseline", datetime.now().strftime("%Y%m%d-%H%M%S"))
+    log_dir = os.path.join("logs", "all_models", "mobileNet_2.0", datetime.now().strftime("%Y%m%d-%H%M%S"))
     os.makedirs(log_dir, exist_ok=True)
     
     # Get unique model path
-    model_path = get_unique_model_path("sota_baseline")
+    model_path = get_unique_model_path("mobileNet_2.0")
     
     # Load data
     x_train, x_val, x_test, y_train, y_val, y_test = load_data()
@@ -186,6 +186,9 @@ def main():
     # Print model summary
     model.summary()
     
+    total_params = model.count_params()
+    print(f"\n📦 Total parameters: {total_params}")
+
     # Define callbacks
     callbacks = [
         tf.keras.callbacks.TensorBoard(
@@ -216,7 +219,7 @@ def main():
         tf.keras.callbacks.ReduceLROnPlateau(
             monitor='val_loss',
             factor=0.5,
-            patience=5,
+            patience=10,
             verbose=1,
             min_lr=0.00001
         )
