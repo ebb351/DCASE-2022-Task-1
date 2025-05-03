@@ -2,3 +2,5 @@ numpy
 tensorflow
 scikit-learn
 matplotlib
+pandas
+tqdm

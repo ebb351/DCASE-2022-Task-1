@@ -4,6 +4,6 @@ data/
 logs/
 best_model.h5
 *.png
-*.keras
+all_models/
 */__pycache__/*
 *.pyc

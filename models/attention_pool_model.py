@@ -1,26 +1,20 @@
 """
-DCASE2022 Challenge - Acoustic Scene Classification Baseline Model with Attention Pooling
+DCASE2022 Challenge - Acoustic Scene Classification with Attention Pooling
 
-This script implements a convolutional neural network (CNN) for acoustic scene classification
-using mel-spectrogram features with attention pooling. The model architecture is specifically 
-designed for the DCASE2022 challenge dataset.
+This script implements a CNN for acoustic scene classification that uses attention pooling
+to focus on relevant parts of the mel-spectrogram features.
 
 Key Features:
-- Input: Mel-spectrogram features of shape (40, 51)
-- Architecture: Three convolutional blocks with attention pooling
+- Input: Mel-spectrogram features
+- Architecture: Convolutional layers with attention pooling
 - Output: 10-class classification (acoustic scenes)
-- Training: Includes early stopping and model checkpointing
-- Evaluation: Provides accuracy metrics and training visualization
-
-Author: [Your Name]
-Date: [Current Date]
 """
 
 import os
 import sys
 import numpy as np
 import tensorflow as tf
-from tensorflow.keras import layers, models
+from tensorflow.keras import layers, models, regularizers
 from sklearn.model_selection import train_test_split
 import matplotlib.pyplot as plt
 from datetime import datetime
@@ -28,8 +22,6 @@ from datetime import datetime
 # Add the project root directory to the Python path
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
-
-from utils.test_logger import log_test_results, get_unique_model_path
 
 class AttentionPooling2D(layers.Layer):
     """

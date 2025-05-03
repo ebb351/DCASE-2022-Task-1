@@ -1,16 +1,13 @@
 """
-DCASE2022 Challenge - Acoustic Scene Classification Baseline Model
+DCASE2022 Challenge - Acoustic Scene Classification with MobileNet v2.0
 
-This script implements a baseline convolutional neural network (CNN) for acoustic scene classification
-using mel-spectrogram features. The model architecture is specifically designed for the DCASE2022
-challenge dataset.
+This script implements an improved MobileNet-based model for acoustic scene classification
+using mel-spectrogram features, with enhanced performance over the baseline.
 
 Key Features:
-- Input: Mel-spectrogram features of shape (40, 51)
-- Architecture: Three convolutional blocks with increasing complexity
+- Input: Mel-spectrogram features
+- Architecture: MobileNet-style depthwise separable convolutions
 - Output: 10-class classification (acoustic scenes)
-- Training: Includes early stopping and model checkpointing
-- Evaluation: Provides accuracy metrics and training visualization
 """
 
 import os
@@ -25,8 +22,6 @@ from datetime import datetime
 # Add the project root directory to the Python path
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
-
-from utils.test_logger import log_test_results, get_unique_model_path
 
 def mobilenet_block(x, filters, kernel_size=(3, 3), strides=(1, 1), alpha=1.0, block_id=0):
     """MobileNet-style depthwise separable conv block."""
@@ -128,6 +123,7 @@ def create_model(input_shape=(40, 51), num_classes=10):
 
     model = tf.keras.Model(inputs=inputs, outputs=outputs)
     return model
+
 def plot_training_history(history):
     """Plot and save training history."""
     plt.figure(figsize=(12, 4))

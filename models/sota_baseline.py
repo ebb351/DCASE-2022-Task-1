@@ -1,16 +1,13 @@
 """
-DCASE2022 Challenge - Acoustic Scene Classification Baseline Model
+DCASE2022 Challenge - State-of-the-Art Baseline for Acoustic Scene Classification
 
-This script implements a baseline convolutional neural network (CNN) for acoustic scene classification
-using mel-spectrogram features. The model architecture is specifically designed for the DCASE2022
-challenge dataset.
+This script implements a state-of-the-art baseline CNN for acoustic scene classification
+using mel-spectrogram features, designed to provide a strong performance baseline.
 
 Key Features:
-- Input: Mel-spectrogram features of shape (40, 51)
-- Architecture: Three convolutional blocks with increasing complexity
+- Input: Mel-spectrogram features
+- Architecture: Deeper convolutional architecture with optimized components
 - Output: 10-class classification (acoustic scenes)
-- Training: Includes early stopping and model checkpointing
-- Evaluation: Provides accuracy metrics and training visualization
 """
 
 import os
@@ -26,7 +23,6 @@ from datetime import datetime
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
 
-from utils.test_logger import log_test_results, get_unique_model_path
 
 def load_data():
     """Load and preprocess the DCASE2022 dataset from numpy mel files."""

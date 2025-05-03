@@ -26,8 +26,6 @@ from datetime import datetime
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
 
-from utils.test_logger import log_test_results, get_unique_model_path
-
 def mobilenet_block(x, filters, kernel_size=(3, 3), strides=(1, 1), alpha=1.0, block_id=0):
     """MobileNet-style depthwise separable conv block."""
     prefix = f'block_{block_id}_'

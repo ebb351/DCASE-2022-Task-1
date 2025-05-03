@@ -1,16 +1,13 @@
 """
-DCASE2022 Challenge - Acoustic Scene Classification Baseline Model
+DCASE2022 Challenge - Acoustic Scene Classification with Scattering Transform Features
 
-This script implements a baseline convolutional neural network (CNN) for acoustic scene classification
-using mel-spectrogram features. The model architecture is specifically designed for the DCASE2022
-challenge dataset.
+This script implements a neural network for acoustic scene classification that uses 
+scattering transform features instead of mel-spectrograms for enhanced performance.
 
 Key Features:
-- Input: Mel-spectrogram features of shape (40, 51)
-- Architecture: Three convolutional blocks with increasing complexity
+- Input: Scattering transform features
+- Architecture: Convolutional layers with deeper structure
 - Output: 10-class classification (acoustic scenes)
-- Training: Includes early stopping and model checkpointing
-- Evaluation: Provides accuracy metrics and training visualization
 """
 
 import os
@@ -23,8 +20,8 @@ import matplotlib.pyplot as plt
 from datetime import datetime
 
 # Add the project root directory to the Python path
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from utils.test_logger import log_test_results, get_unique_model_path
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, project_root)
 
 def load_data():
     """Load and preprocess the DCASE2022 dataset from scattering transform numpy files."""

@@ -31,8 +31,6 @@ from datetime import datetime
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
 
-from utils.test_logger import log_test_results, get_unique_model_path
-
 class AttentionPooling2D(layers.Layer):
     """
     Custom attention pooling layer for acoustic scene classification.
@@ -66,6 +64,18 @@ class AttentionPooling2D(layers.Layer):
         super().__init__(**kwargs)
         self.pool_size = pool_size
         
+        # Learnable mixing factor (initialized to 0.7)
+        self.alpha = None
+        self.channel_attn = None
+        self.spatial_attn = None
+        self.freq_attn = None
+        self.time_attn = None
+        self.bn = None
+        self.bn_freq = None
+        self.bn_time = None
+    
+    def build(self, input_shape):
+        """Build the layer and initialize weights."""
         # Channel attention: Learns important frequency bands
         self.channel_attn = tf.keras.layers.Conv2D(
             filters=32,
@@ -110,6 +120,8 @@ class AttentionPooling2D(layers.Layer):
         
         # Learnable mixing factor (initialized to 0.7)
         self.alpha = tf.Variable(0.7, trainable=True, dtype=tf.float32)
+        
+        super().build(input_shape)
         
     def call(self, inputs, training=None):
         """
@@ -266,7 +278,7 @@ def create_model(input_shape=(52, 128), num_classes=10):
     
     # First MobileNet block (replacement for C1)
     x = mobilenet_block(inputs, filters=32, block_id=1)
-    x = layers.Dropout(0.2)(x)
+    x = layers.Dropout(0.3)(x)
     
     # Second MobileNet block (replacement for C2)
     x = mobilenet_block(x, filters=64, block_id=2)
@@ -278,11 +290,11 @@ def create_model(input_shape=(52, 128), num_classes=10):
     
     # Third MobileNet block (replacement for C3)
     x = mobilenet_block(x, filters=128, block_id=3)
-    x = layers.Dropout(0.4)(x)
+    x = layers.Dropout(0.3)(x)
 
     # P2: Attention Pooling instead of AveragePooling2D
     x = AttentionPooling2D(pool_size=(2, 2))(x)
-    x = layers.Dropout(0.4)(x)
+    x = layers.Dropout(0.3)(x)
     # Global pooling
     x = layers.GlobalAveragePooling2D()(x)
     
@@ -290,7 +302,7 @@ def create_model(input_shape=(52, 128), num_classes=10):
     x = layers.Dense(100, kernel_regularizer=regularizers.l2(1e-4))(x)
     x = layers.BatchNormalization()(x)
     x = layers.Activation('tanh')(x)
-    x = layers.Dropout(0.5)(x)
+    x = layers.Dropout(0.3)(x)
 
     # Classification + softmax (10 units)
     outputs = layers.Dense(num_classes, activation='softmax')(x)

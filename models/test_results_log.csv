@@ -1,3 +1,0 @@
-timestamp,model_name,test_accuracy,test_logloss,model_path,tensorboard_logdir
-2025-04-30 15:12:53,sota_baseline,0.11283692717552185,2.7231784,models/sota_baseline_20250430-145016.keras,logs/all_models/sota_baseline/20250430-145016
-2025-04-30 21:04:58,sota_baseline,0.27631402015686035,2.0549433,models/sota_baseline_20250430-162552.keras,logs/all_models/sota_baseline/20250430-162552
