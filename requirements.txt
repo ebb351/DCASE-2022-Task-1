@@ -4,3 +4,8 @@ scikit-learn
 matplotlib
 pandas
 tqdm
+librosa
+scipy
+kymatio
+dcase_util
+ipython
