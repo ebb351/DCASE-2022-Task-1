@@ -117,6 +117,16 @@ def evaluate_model(model, x_test, y_test_numeric, y_test_categorical, class_name
     recall_per_class = recall_score(y_test_numeric, y_pred_classes, average=None)
     f1_per_class = f1_score(y_test_numeric, y_pred_classes, average=None)
     
+    # Calculate per-class accuracy
+    accuracy_per_class = []
+    for i in range(len(class_names)):
+        class_mask = y_test_numeric == i
+        if np.sum(class_mask) > 0:
+            class_accuracy = accuracy_score(y_test_numeric[class_mask], y_pred_classes[class_mask])
+        else:
+            class_accuracy = 0.0
+        accuracy_per_class.append(class_accuracy)
+    
     # Print overall results
     print(f"\nOverall Results:")
     print(f"Accuracy: {accuracy:.4f}")
@@ -133,6 +143,7 @@ def evaluate_model(model, x_test, y_test_numeric, y_test_categorical, class_name
         print("\nPer-Class Results:")
         for i, class_name in enumerate(class_names):
             print(f"{class_name}:")
+            print(f"  Accuracy: {accuracy_per_class[i]:.4f}")
             print(f"  Precision: {precision_per_class[i]:.4f}")
             print(f"  Recall: {recall_per_class[i]:.4f}")
             print(f"  F1 Score: {f1_per_class[i]:.4f}")
@@ -193,6 +204,7 @@ def evaluate_model(model, x_test, y_test_numeric, y_test_categorical, class_name
             metrics[f'precision_{class_name}'] = precision_per_class[i]
             metrics[f'recall_{class_name}'] = recall_per_class[i]
             metrics[f'f1_{class_name}'] = f1_per_class[i]
+            metrics[f'accuracy_{class_name}'] = accuracy_per_class[i]
     
     return metrics
 
@@ -211,6 +223,7 @@ def save_metrics_to_csv(model_path, data_type, metrics, class_names):
     model_filename = os.path.basename(model_path)
     model_name = os.path.splitext(model_filename)[0]
     
+    # Initialize row with base metrics
     row = {
         'timestamp': timestamp,
         'model_name': model_name,
@@ -226,18 +239,41 @@ def save_metrics_to_csv(model_path, data_type, metrics, class_names):
         'f1_micro': metrics['f1_micro'],
     }
     
-    # Add per-class metrics
+    # Add per-class metrics in the correct order
     for class_name in class_names:
-        row[f'precision_{class_name}'] = metrics.get(f'precision_{class_name}', np.nan)
-        row[f'recall_{class_name}'] = metrics.get(f'recall_{class_name}', np.nan)
-        row[f'f1_{class_name}'] = metrics.get(f'f1_{class_name}', np.nan)
+        # Add precision, recall, f1, and accuracy for each class
+        row[f'precision_{class_name}'] = metrics[f'precision_{class_name}']
+        row[f'recall_{class_name}'] = metrics[f'recall_{class_name}']
+        row[f'f1_{class_name}'] = metrics[f'f1_{class_name}']
+        row[f'accuracy_{class_name}'] = metrics[f'accuracy_{class_name}']
     
     # Check if file exists
     file_exists = os.path.isfile(RESULTS_CSV)
     
-    # Create or append to the CSV
+    # Create DataFrame for the new row
     df = pd.DataFrame([row])
-    df.to_csv(RESULTS_CSV, mode='a', header=not file_exists, index=False)
+    
+    if file_exists:
+        try:
+            # Read existing CSV file
+            existing_df = pd.read_csv(RESULTS_CSV)
+            
+            # If the existing CSV doesn't have accuracy columns, we need to add them
+            # Combine columns from both DataFrames to ensure all are included
+            all_columns = list(existing_df.columns) + [col for col in df.columns if col not in existing_df.columns]
+            
+            # Create a new merged DataFrame with all columns
+            merged_df = pd.DataFrame([row], columns=all_columns)
+            
+            # Append to the existing file while preserving the header
+            merged_df.to_csv(RESULTS_CSV, mode='a', header=False, index=False)
+        except Exception as e:
+            print(f"Error handling existing CSV: {e}")
+            print("Creating a new CSV file instead.")
+            df.to_csv(RESULTS_CSV, index=False)
+    else:
+        # Create a new CSV file
+        df.to_csv(RESULTS_CSV, index=False)
     
     print(f"\nResults saved to {RESULTS_CSV}")
 
