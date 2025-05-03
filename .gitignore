@@ -3,7 +3,6 @@ data/
 .env
 logs/
 best_model.h5
-*.png
 all_models/
 */__pycache__/*
 *.pyc
