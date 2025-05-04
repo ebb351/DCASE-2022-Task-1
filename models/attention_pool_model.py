@@ -23,6 +23,9 @@ from datetime import datetime
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
 
+# Import utility functions
+from utils.model_utils import get_unique_model_path, log_test_results
+
 class AttentionPooling2D(layers.Layer):
     """
     Custom attention pooling layer for acoustic scene classification.

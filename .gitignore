@@ -6,3 +6,4 @@ best_model.h5
 all_models/
 */__pycache__/*
 *.pyc
+models/saved/*
