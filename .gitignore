@@ -7,3 +7,4 @@ all_models/
 */__pycache__/*
 *.pyc
 models/saved/*
+results/
