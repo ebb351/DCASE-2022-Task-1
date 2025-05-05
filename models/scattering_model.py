@@ -95,29 +95,22 @@ def create_model(input_shape=(52, 128), num_classes=10):
     model.add(layers.Conv2D(16, kernel_size=(3, 3), padding='same'))
     model.add(layers.BatchNormalization())
     model.add(layers.Activation('tanh'))
-    model.add(layers.MaxPooling2D(pool_size=(2, 2)))
+    model.add(layers.AveragePooling2D(pool_size=(2, 2)))
     model.add(layers.Dropout(0.2))
 
     # Second convolution block
     model.add(layers.Conv2D(16, kernel_size=(3, 3), padding='same'))
     model.add(layers.BatchNormalization())
     model.add(layers.Activation('relu'))
-    model.add(layers.MaxPooling2D(pool_size=(2, 2)))
+    model.add(layers.AveragePooling2D(pool_size=(2, 2)))
     model.add(layers.Dropout(0.25))
 
     # Third convolution block
     model.add(layers.Conv2D(48, kernel_size=(3, 3), padding='same'))
     model.add(layers.BatchNormalization())
     model.add(layers.Activation('relu'))
-    model.add(layers.MaxPooling2D(pool_size=(2, 2)))
+    model.add(layers.AveragePooling2D(pool_size=(2, 2)))
     model.add(layers.Dropout(0.3))
-
-    # Fourth convolution block (not sure if we can use this, not 4th block in the original model)
-    # model.add(layers.Conv2D(64, kernel_size=(3, 3), padding='same'))
-    # model.add(layers.BatchNormalization())
-    # model.add(layers.Activation('relu'))
-    # model.add(layers.MaxPooling2D(pool_size=(2, 2)))
-    # model.add(layers.Dropout(0.35))
 
     # Global pooling instead of flatten
     model.add(layers.GlobalAveragePooling2D())

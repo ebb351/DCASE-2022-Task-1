@@ -102,7 +102,7 @@ def evaluate_model(model, x_test, y_test_numeric, y_test_categorical, class_name
     y_pred_classes = np.argmax(y_pred, axis=1)
     
     # Calculate overall metrics
-    accuracy = accuracy_score(y_test_numeric, y_pred_classes)
+    accuracy_micro = accuracy_score(y_test_numeric, y_pred_classes)
     precision_overall = precision_score(y_test_numeric, y_pred_classes, average='macro')
     recall_overall = recall_score(y_test_numeric, y_pred_classes, average='macro')
     f1_overall = f1_score(y_test_numeric, y_pred_classes, average='macro')
@@ -127,9 +127,13 @@ def evaluate_model(model, x_test, y_test_numeric, y_test_categorical, class_name
             class_accuracy = 0.0
         accuracy_per_class.append(class_accuracy)
     
+    # Calculate average per-class accuracy
+    accuracy_macro = np.mean(accuracy_per_class)
+    
     # Print overall results
     print(f"\nOverall Results:")
-    print(f"Accuracy: {accuracy:.4f}")
+    print(f"Accuracy (Micro): {accuracy_micro:.4f}")
+    print(f"Accuracy (Macro): {accuracy_macro:.4f}")
     print(f"Loss: {loss:.4f}")
     print(f"Precision (macro): {precision_overall:.4f}")
     print(f"Recall (macro): {recall_overall:.4f}")
@@ -188,7 +192,8 @@ def evaluate_model(model, x_test, y_test_numeric, y_test_categorical, class_name
     
     # Compile all metrics into a dictionary
     metrics = {
-        'accuracy': accuracy,
+        'accuracy_micro': accuracy_micro,
+        'accuracy_macro': accuracy_macro,
         'loss': loss,
         'precision_overall': precision_overall,
         'recall_overall': recall_overall,
@@ -229,7 +234,8 @@ def save_metrics_to_csv(model_path, data_type, metrics, class_names):
         'model_name': model_name,
         'model_path': model_path,
         'data_type': data_type,
-        'accuracy': metrics['accuracy'],
+        'accuracy_micro': metrics['accuracy_micro'],
+        'accuracy_macro': metrics['accuracy_macro'],
         'loss': metrics['loss'],
         'precision_overall': metrics['precision_overall'],
         'recall_overall': metrics['recall_overall'],

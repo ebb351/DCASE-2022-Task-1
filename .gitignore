@@ -8,3 +8,7 @@ all_models/
 *.pyc
 models/saved/*
 results/
+visualizations/
+count_params.py
+training_history.png
+test_results_log.csv
