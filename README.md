@@ -12,11 +12,9 @@ This project implements a baseline model for DCASE 2022 Task 1: Acoustic Scene C
 ├── evaluation/              # Evaluation scripts and related files
 ├── models/                  # Model implementations and saved models
 ├── logs/                    # Tensorboard logs (git-ignored)
-├── preprocessing/           # Data preprocessing scripts
+├── preprocessing/           # Scripts for scattering transform creation
 ├── utils/                   # Utility scripts
-├── evaluation_results.csv   # Comprehensive evaluation metrics for all models
-└── test_results_log.csv     # Tracks test results from training runs
-
+└── evaluation_results.csv   # Comprehensive evaluation metrics for all models
 ```
 
 ## Setup Instructions
@@ -28,7 +26,7 @@ This project implements a baseline model for DCASE 2022 Task 1: Acoustic Scene C
 ### Installation
 1. Clone this repository:
 ```bash
-git clone https://github.com/ebb351/DCASE-2022-Task-1/tree/main/models
+git clone https://github.com/ebb351/DCASE-2022-Task-1.git
 cd DCASE-2022-Task-1
 ```
 
@@ -101,7 +99,7 @@ python models/<model_name>.py
 Each training run will:
 - Save the best model weights (by highest validation accuracy) to a `.keras` file
 - Log training metrics to TensorBoard
-- Record test results in `test_results_log.csv`
+- Record test results in `test_results_log.csv` (git-ignored)
 
 ## Monitoring Training with TensorBoard
 
@@ -129,7 +127,7 @@ This project includes comprehensive model evaluation capabilities with detailed 
 
 ### Key Metrics
 - Categorical cross-entropy loss
-- Accuracy (overall)
+- Accuracy (per-class and overall)
 - Precision (per-class and overall)
 - Recall (per-class and overall)
 - F1 Score (per-class and overall)
@@ -138,7 +136,7 @@ This project includes comprehensive model evaluation capabilities with detailed 
 
 To evaluate a single model:
 ```bash
-python evaluate_model.py --model path/to/model.keras
+python evaluate_model.py --model path/to/model.keras --data-type <scattering/mel_spec>
 ```
 
 To evaluate all models in the best_models directory:
